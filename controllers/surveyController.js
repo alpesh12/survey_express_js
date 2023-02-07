@@ -5,7 +5,30 @@ exports.create = async (request, response) => {
 
   let { title, questions } = request.body;
 
-  if (!title) {
+  if (!title || !questions || !questions.length) {
+    return response.status(403).send({
+      status: false,
+      data: {
+        message: constant.serverError
+      }
+    });
+  }
+
+  let optionsProvided = true;
+  questions.forEach(element => {
+    if (!element.question || !["description", "singleChoice", "multipleChoice"].includes(element.answerType) || (element.answerType != "description" && (!element.options || !element.options.length))) {
+      optionsProvided = false;
+    }
+    if (element.options && element.options.length) {
+      element.options.forEach(option => {
+        if (!option.option) {
+          optionsProvided = false;
+        }
+      });
+    }
+  });
+
+  if (!optionsProvided) {
     return response.status(403).send({
       status: false,
       data: {
@@ -21,6 +44,12 @@ exports.create = async (request, response) => {
   );
   const randomString = randomArray.join("");
   let surveyId = "SUR" + randomString;
+
+  questions.forEach(element => {
+    if (element.answerType == "description") {
+      element.options = [];
+    }
+  });
 
   let survey = await Survey.create({
     title: title,
@@ -64,7 +93,8 @@ exports.get = async (request, response) => {
     where: {
       id: surveyId
     },
-    include: [{ association: "questions", include: "options" }]
+    include: [{ association: "questions", include: "options" }],
+    order: [["questions", "id", "ASC"], ["questions", "options", 'id', 'ASC']]
   });
 
   return response.json({
@@ -117,7 +147,7 @@ exports.list = async (request, response) => {
 
   let surveyList = await Survey.findAll({
     include: [{ association: "questions", include: "options" }],
-    order: [["id", "DESC"]],
+    order: [["id", "DESC"], ["questions", "id", "ASC"], ["questions", "options", 'id', 'ASC']],
     limit: item_per_page,
     offset: offset
   });
@@ -138,7 +168,7 @@ exports.submit = async (request, response) => {
 
   let { firstName, lastName, email, surveyId, answers } = request.body;
 
-  if (!surveyId || !firstName || !lastName || !email || !answers) {
+  if (!surveyId || !firstName || !lastName || !email || !answers || !answers.length) {
     return response.status(403).send({
       status: false,
       data: {
@@ -146,6 +176,35 @@ exports.submit = async (request, response) => {
       }
     });
   }
+
+  let answersProvided = true;
+  answers.forEach(element => {
+    if (!element.question || !element.answer || !["description", "singleChoice", "multipleChoice"].includes(element.answerType) || (element.answerType != "description" && (!element.options || !element.options.length))) {
+      answersProvided = false;
+    }
+    if (element.options && element.options.length) {
+      element.options.forEach(option => {
+        if (!option.answer) {
+          answersProvided = false;
+        }
+      });
+    }
+  });
+
+  if (!answersProvided) {
+    return response.status(403).send({
+      status: false,
+      data: {
+        message: constant.serverError
+      }
+    });
+  }
+
+  answers.forEach(element => {
+    if (element.answerType == "description") {
+      element.options = [];
+    }
+  });
 
   let userSurvey = await UserSurvey.create({
     firstName: firstName,
@@ -185,7 +244,7 @@ exports.submittedSurvey = async (request, response) => {
   let surveyList = await UserSurvey.findAll({
     where: whereObj,
     include: [{ association: "answers", include: "options" }],
-    order: [["id", "DESC"]],
+    order: [["id", "DESC"], ["answers", "questionId", "ASC"]],
     limit: item_per_page,
     offset: offset
   });
